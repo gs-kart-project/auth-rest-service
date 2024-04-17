@@ -1,10 +1,6 @@
 package com.gskart.user.entities;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Entity;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.ManyToOne;
-import lombok.Builder;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,6 +16,25 @@ public class User extends BaseEntity{
     private String username;
     private String password;
     //As user can have multiple roles
-    @ManyToMany(cascade = CascadeType.ALL)
+    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private Set<Role> roles;
+
+    @Enumerated(EnumType.ORDINAL)
+    private UserStatus userStatus;
+
+    @Enumerated(EnumType.ORDINAL)
+    private CredentialsStatus credentialsStatus;
+
+    @Getter
+    public enum UserStatus{
+        IN_ACTIVE,
+        ACTIVE,
+        DELETED,
+        LOCKED
+    }
+
+    public enum CredentialsStatus{
+        EXPIRED,
+        ACTIVE
+    }
 }
