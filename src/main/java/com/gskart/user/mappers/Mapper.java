@@ -5,7 +5,6 @@ import com.gskart.user.DTOs.UserDto;
 import com.gskart.user.DTOs.response.ClaimsResponse;
 import com.gskart.user.entities.Role;
 import com.gskart.user.entities.User;
-import io.jsonwebtoken.Claims;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
@@ -36,15 +35,6 @@ public class Mapper {
             role.setName(roleDto.getName());
             return role;
         }).collect(Collectors.toSet());
-    }
-
-    public ClaimsResponse claimsToClaimsResponse(Claims claims) {
-        ClaimsResponse claimsResponse = new ClaimsResponse();
-        claimsResponse.setUsername(claims.getSubject());
-        claimsResponse.setEmail(claims.get("email", String.class));
-        Set<RoleDto> roleDtoSet = (Set<RoleDto>) claims.get("roles");
-        claimsResponse.setRoles(roleDtoSet);
-        return claimsResponse;
     }
 
     public ClaimsResponse userEntityToClaimsResponse(User user) {

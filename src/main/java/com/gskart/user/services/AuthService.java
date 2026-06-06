@@ -12,8 +12,6 @@ import io.jsonwebtoken.Claims;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -90,7 +88,7 @@ public class AuthService implements IAuthService {
 
         // Generate token and add to Header
         String accessToken = jwtHelper.generateToken(user.getUsername(), user.getEmail(), mapper.rolesEntitySetToRolesDtoSet(user.getRoles()));
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.SET_COOKIE, accessToken);
 
         LoginResult loginResult = new LoginResult();

@@ -14,6 +14,7 @@ public class GlobalExceptionHandler {
         // Logging in console for now.
         System.out.println(exception.toString());
         exception.printStackTrace();
-        return new ResponseEntity<>("Unexpected error occurred. Unable to process this request.", HttpStatus.INTERNAL_SERVER_ERROR);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Unexpected error occurred. Unable to process this request.");
     }
 }

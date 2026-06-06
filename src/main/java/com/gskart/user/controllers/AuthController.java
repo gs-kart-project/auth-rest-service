@@ -59,7 +59,7 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ResponseEntity<UserDto> login(@RequestBody LoginRequest loginRequest) {
-        var unauthorizedResponse = new ResponseEntity<UserDto>(HttpStatus.UNAUTHORIZED);
+        ResponseEntity<UserDto> unauthorizedResponse = ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         try {
             LoginResult loginResult = authService.login(loginRequest.getUsername(), loginRequest.getPassword());
             if(loginResult == null || loginResult.getUser() == null){
@@ -69,15 +69,16 @@ public class AuthController {
                 return unauthorizedResponse;
             }
             UserDto userDto = mapper.userEntityToDto(loginResult.getUser());
-            ResponseEntity<UserDto> response = new ResponseEntity<>(userDto, loginResult.getAuthenticationHeader(), HttpStatus.OK);
-            return response;
+            return ResponseEntity.ok()
+                    .headers(loginResult.getAuthenticationHeader())
+                    .body(userDto);
         }
         catch (UserNotExistsException userNotExistsException){
             userNotExistsException.printStackTrace();
             return unauthorizedResponse;
         } catch (JwtKeyStoreException e) {
             e.printStackTrace();
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
     }
 
