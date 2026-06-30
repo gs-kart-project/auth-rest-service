@@ -1,6 +1,12 @@
 HELP.md
 target/
+
+# Local secrets
+.env
 docs/
+
+# Local-only tracking doc (project docs/tracker stay uncommitted per ADR-D8)
+TRACKER.md
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

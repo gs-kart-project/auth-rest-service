@@ -8,4 +8,5 @@ import org.springframework.http.HttpHeaders;
 public class LoginResult {
     private User user;
     private HttpHeaders authenticationHeader;
+    private String refreshToken;
 }

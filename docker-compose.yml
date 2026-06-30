@@ -1,0 +1,22 @@
+name: gskart                       # OrbStack groups containers under "gskart"
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: gskart-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      GSKART_DB_USER: ${GSKART_DB_USER}
+      GSKART_DB_PASSWORD: ${GSKART_DB_PASSWORD}
+    volumes:
+      - gskart-mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  gskart-mysql-data:

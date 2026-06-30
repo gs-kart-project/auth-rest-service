@@ -2,6 +2,7 @@ package com.gskart.user.security.filters;
 
 import com.gskart.user.exceptions.JwtKeyStoreException;
 import com.gskart.user.exceptions.JwtNotValidException;
+import com.gskart.user.repositories.BlacklistedTokenRepository;
 import com.gskart.user.security.services.GSKartUserService;
 import com.gskart.user.utils.JwtHelper;
 import io.jsonwebtoken.Claims;
@@ -25,10 +26,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtHelper jwtHelper;
     private final GSKartUserService gsKartUserService;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
 
-    public JwtAuthFilter(JwtHelper jwtHelper, GSKartUserService gsKartUserService) {
+    public JwtAuthFilter(JwtHelper jwtHelper, GSKartUserService gsKartUserService, BlacklistedTokenRepository blacklistedTokenRepository) {
         this.jwtHelper = jwtHelper;
         this.gsKartUserService = gsKartUserService;
+        this.blacklistedTokenRepository = blacklistedTokenRepository;
     }
 
     @Override
@@ -43,6 +46,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         try {
             Claims claims = jwtHelper.getClaimsFromToken(token);
+            if(blacklistedTokenRepository.existsByTokenId(claims.getId())) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                return;
+            }
             String username = claims.getSubject();
             if(username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = gsKartUserService.loadUserByUsername(username);

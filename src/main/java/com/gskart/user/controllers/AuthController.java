@@ -2,14 +2,18 @@ package com.gskart.user.controllers;
 
 import com.gskart.user.DTOs.UserDto;
 import com.gskart.user.DTOs.requests.LoginRequest;
+import com.gskart.user.DTOs.requests.RefreshTokenRequest;
 import com.gskart.user.DTOs.requests.SignUpRequest;
 import com.gskart.user.DTOs.response.ClaimsResponse;
+import com.gskart.user.DTOs.response.LoginResponse;
 import com.gskart.user.DTOs.results.LoginResult;
 import com.gskart.user.entities.User;
 import com.gskart.user.exceptions.*;
 import com.gskart.user.mappers.Mapper;
 import com.gskart.user.security.models.GSKartUserDetails;
 import com.gskart.user.services.IAuthService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     final IAuthService authService;
     final Mapper mapper;
@@ -53,13 +59,12 @@ public class AuthController {
 
     /**
      * Login with the given credentials
-     * TODO response should be of type LoginResponse. Need to check and change after adding token based auth
      * @param loginRequest
-     * @return
+     * @return the access token in the Authorization header, and the user + refresh token in the body.
      */
     @PostMapping("/login")
-    public ResponseEntity<UserDto> login(@RequestBody LoginRequest loginRequest) {
-        ResponseEntity<UserDto> unauthorizedResponse = ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest loginRequest) {
+        ResponseEntity<LoginResponse> unauthorizedResponse = ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         try {
             LoginResult loginResult = authService.login(loginRequest.getUsername(), loginRequest.getPassword());
             if(loginResult == null || loginResult.getUser() == null){
@@ -68,46 +73,64 @@ public class AuthController {
             if(loginResult.getAuthenticationHeader().isEmpty()){
                 return unauthorizedResponse;
             }
-            UserDto userDto = mapper.userEntityToDto(loginResult.getUser());
+            LoginResponse loginResponse = new LoginResponse();
+            loginResponse.setUser(mapper.userEntityToDto(loginResult.getUser()));
+            loginResponse.setRefreshToken(loginResult.getRefreshToken());
             return ResponseEntity.ok()
                     .headers(loginResult.getAuthenticationHeader())
-                    .body(userDto);
+                    .body(loginResponse);
         }
         catch (UserNotExistsException userNotExistsException){
-            userNotExistsException.printStackTrace();
+            log.warn("Login failed: {}", userNotExistsException.getMessage());
             return unauthorizedResponse;
         } catch (JwtKeyStoreException e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            log.error("Login failed due to a JWT keystore error", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Exchange a valid refresh token for a new access token (rotates the refresh token).
+     */
+    @PostMapping("/token/refresh")
+    public ResponseEntity<LoginResponse> refresh(@RequestBody RefreshTokenRequest refreshTokenRequest) {
+        try {
+            LoginResult loginResult = authService.refresh(refreshTokenRequest.getRefreshToken());
+            LoginResponse loginResponse = new LoginResponse();
+            loginResponse.setUser(mapper.userEntityToDto(loginResult.getUser()));
+            loginResponse.setRefreshToken(loginResult.getRefreshToken());
+            return ResponseEntity.ok()
+                    .headers(loginResult.getAuthenticationHeader())
+                    .body(loginResponse);
+        } catch (RefreshTokenException e) {
+            log.warn("Token refresh failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        } catch (JwtKeyStoreException e) {
+            log.error("Token refresh failed due to a JWT keystore error", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Logs out the caller: blacklists the current access token and revokes their refresh tokens.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authHeader) {
+        String accessToken = authHeader.substring(7);
+        try {
+            authService.logout(accessToken);
+            return ResponseEntity.ok().build();
+        } catch (JwtKeyStoreException e) {
+            log.error("Logout failed due to a JWT keystore error", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        } catch (JwtNotValidException e) {
+            log.warn("Logout failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
     }
 
     @PostMapping("token/validate")
-    public ResponseEntity<Boolean> validateToken(@RequestBody UserDto userDto, @RequestHeader(value = "Authorization") String authHeader){
-        /*ResponseEntity<Boolean> unauthorizedResponse = new ResponseEntity<>(false, HttpStatus.UNAUTHORIZED);
-        if(authHeader == null || authHeader.isEmpty() || !authHeader.startsWith("Bearer ")){
-            return unauthorizedResponse;
-        }
-
-        if(userDto == null){
-            return new ResponseEntity<>(false, HttpStatus.BAD_REQUEST);
-        }
-
-        String token = authHeader.substring(7);
-        Set<Role> roles = mapper.rolesDtoSetToRolesEntitySet(userDto.getRoles());
-        try {
-            isTokenValid = authService.validateToken(
-                    token,
-                    userDto.getUsername()
-            );
-        } catch (JwtKeyStoreException e) {
-            e.printStackTrace();
-            return new ResponseEntity<>(false, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        if(!isTokenValid){
-            return new ResponseEntity<>(false, HttpStatus.UNAUTHORIZED);
-        }
-        return new ResponseEntity<>(isTokenValid, HttpStatus.OK);*/
+    public ResponseEntity<Boolean> validateToken(@RequestBody UserDto userDto){
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         if(!userDetails.getUsername().equals(userDto.getUsername())){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(false);
@@ -126,33 +149,11 @@ public class AuthController {
 
     @GetMapping("/token/claims")
     public ResponseEntity<ClaimsResponse> getClaimsFromToken(){
-        /*if(authHeader == null || authHeader.isEmpty() || !authHeader.startsWith("Bearer ")){
-            // No bearer token present in header
-            return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
-        }
-        var token = authHeader.substring(7);
-        try {
-            var claims = authService.getClaimsFromToken(token);
-            ClaimsResponse response = mapper.claimsToClaimsResponse(claims);
-            return ResponseEntity.ok(response);
-        } catch (JwtNotValidException e) {
-            return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
-        } catch (JwtKeyStoreException e) {
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        catch (ClassCastException e){
-            e.printStackTrace();
-            return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
-        }*/
         GSKartUserDetails userDetails = (GSKartUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         User user = userDetails.getUserEntity();
         ClaimsResponse response = mapper.userEntityToClaimsResponse(user);
         return ResponseEntity.ok(response);
     }
-    /*
-    TODO
-     1. logout
-     2. forget password
-     */
+    // TODO forget password (FR-U5, depends on notifications-service)
 
 }
