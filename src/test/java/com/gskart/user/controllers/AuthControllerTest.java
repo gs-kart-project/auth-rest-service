@@ -1,17 +1,22 @@
 package com.gskart.user.controllers;
 
+import com.gskart.user.DTOs.RoleDto;
 import com.gskart.user.DTOs.UserDto;
 import com.gskart.user.DTOs.requests.LoginRequest;
 import com.gskart.user.DTOs.requests.RefreshTokenRequest;
+import com.gskart.user.DTOs.response.ClaimsResponse;
 import com.gskart.user.DTOs.response.LoginResponse;
 import com.gskart.user.DTOs.results.LoginResult;
+import com.gskart.user.entities.Role;
 import com.gskart.user.entities.User;
 import com.gskart.user.exceptions.JwtKeyStoreException;
 import com.gskart.user.exceptions.JwtNotValidException;
 import com.gskart.user.exceptions.RefreshTokenException;
 import com.gskart.user.exceptions.UserNotExistsException;
 import com.gskart.user.mappers.Mapper;
+import com.gskart.user.security.models.GSKartUserDetails;
 import com.gskart.user.services.IAuthService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +25,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +48,26 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         authController = new AuthController(authService, mapper);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private User buildUserWithRole(String username, String roleName) {
+        User user = new User();
+        user.setUsername(username);
+        Role role = new Role();
+        role.setName(roleName);
+        user.setRoles(Set.of(role));
+        return user;
+    }
+
+    private void authenticateAs(User user) {
+        GSKartUserDetails userDetails = new GSKartUserDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
     }
 
     private LoginResult buildLoginResult() {
@@ -153,6 +182,55 @@ class AuthControllerTest {
         ResponseEntity<Void> response = authController.logout("Bearer some-access-token");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void validateToken_returns200True_whenUsernameAndAuthorityMatch() {
+        User user = buildUserWithRole("jdoe", "USER");
+        authenticateAs(user);
+
+        UserDto userDto = new UserDto();
+        userDto.setUsername("jdoe");
+        RoleDto roleDto = new RoleDto();
+        roleDto.setName("USER");
+        userDto.setRoles(Set.of(roleDto));
+
+        ResponseEntity<Boolean> response = authController.validateToken(userDto);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isTrue();
+    }
+
+    @Test
+    void validateToken_returns401False_whenUsernameDoesNotMatchPrincipal() {
+        User user = buildUserWithRole("jdoe", "USER");
+        authenticateAs(user);
+
+        UserDto userDto = new UserDto();
+        userDto.setUsername("someone-else");
+        RoleDto roleDto = new RoleDto();
+        roleDto.setName("USER");
+        userDto.setRoles(Set.of(roleDto));
+
+        ResponseEntity<Boolean> response = authController.validateToken(userDto);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isFalse();
+    }
+
+    @Test
+    void getClaimsFromToken_returns200WithMappedClaims_whenPrincipalIsAuthenticated() {
+        User user = buildUserWithRole("jdoe", "USER");
+        authenticateAs(user);
+
+        ClaimsResponse claimsResponse = new ClaimsResponse();
+        claimsResponse.setUsername("jdoe");
+        when(mapper.userEntityToClaimsResponse(user)).thenReturn(claimsResponse);
+
+        ResponseEntity<ClaimsResponse> response = authController.getClaimsFromToken();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(claimsResponse);
     }
 
     private LoginRequest loginRequest(String username, String password) {
