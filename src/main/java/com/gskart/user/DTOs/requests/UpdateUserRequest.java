@@ -7,7 +7,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class SignUpRequest {
+public class UpdateUserRequest {
     @NotBlank
     private String firstname;
     @NotBlank
@@ -15,8 +15,4 @@ public class SignUpRequest {
     @NotBlank
     @Email
     private String email;
-    @NotBlank
-    private String username;
-    @NotBlank
-    private String password;
 }

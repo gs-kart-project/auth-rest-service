@@ -1,159 +1,149 @@
 package com.gskart.user.controllers;
 
+import com.gskart.user.DTOs.RoleDto;
 import com.gskart.user.DTOs.UserDto;
-import com.gskart.user.DTOs.requests.LoginRequest;
-import com.gskart.user.DTOs.requests.RefreshTokenRequest;
-import com.gskart.user.DTOs.requests.SignUpRequest;
+import com.gskart.user.DTOs.requests.TokenRequest;
 import com.gskart.user.DTOs.response.ClaimsResponse;
-import com.gskart.user.DTOs.response.LoginResponse;
+import com.gskart.user.DTOs.response.IntrospectionResponse;
+import com.gskart.user.DTOs.response.TokenResponse;
 import com.gskart.user.DTOs.results.LoginResult;
-import com.gskart.user.entities.User;
-import com.gskart.user.exceptions.*;
+import com.gskart.user.exceptions.JwtKeyStoreException;
+import com.gskart.user.exceptions.JwtNotValidException;
+import com.gskart.user.exceptions.RefreshTokenException;
+import com.gskart.user.exceptions.UserException;
+import com.gskart.user.exceptions.UserNotExistsException;
 import com.gskart.user.mappers.Mapper;
 import com.gskart.user.security.models.GSKartUserDetails;
 import com.gskart.user.services.IAuthService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import java.util.Set;
 
 /**
- * End points to facilitate Authorization and Authentication activities
- * TODO Add a Controller advice to handle generic exceptions
+ * OAuth2/OIDC-aligned endpoints for issuing, refreshing, revoking, and introspecting tokens.
  */
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api/v1")
+@Tag(name = "Auth", description = "OAuth2/OIDC token issuance, revocation, introspection, and userinfo")
 public class AuthController {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+    private static final String GRANT_TYPE_PASSWORD = "password";
+    private static final String GRANT_TYPE_REFRESH_TOKEN = "refresh_token";
 
-    final IAuthService authService;
-    final Mapper mapper;
+    private final IAuthService authService;
+    private final Mapper mapper;
+    private final long accessTokenExpiryMinutes;
 
-    public AuthController(IAuthService authService, Mapper mapper){
-
+    public AuthController(IAuthService authService, Mapper mapper,
+                           @Value("${gskart.jwt.access-token.expiry-minutes}") long accessTokenExpiryMinutes) {
         this.authService = authService;
         this.mapper = mapper;
+        this.accessTokenExpiryMinutes = accessTokenExpiryMinutes;
     }
 
     /**
-     * Sign Up API - Creates a new user with the details provided
-     * @param signUpRequest
-     * @return the user details as per UserDto if successfully signed up.
-     * @throws UserException when there is any other expectations not met for the user request.
-     * @throws UserAlreadyRegisteredException when the user is already registered (Checks using email and username)
+     * Issues an access + refresh token pair (RFC 6749): grantType=password exchanges
+     * credentials; grantType=refresh_token rotates a valid refresh token.
      */
-    // sign up
-    @PostMapping("/signup")
-    public ResponseEntity<UserDto> signUp(@RequestBody SignUpRequest signUpRequest) throws UserException, UserAlreadyRegisteredException {
-        User user = authService.signup(signUpRequest);
-        UserDto userDto = mapper.userEntityToDto(user);
-        return ResponseEntity.ok(userDto);
-    }
-
-    /**
-     * Login with the given credentials
-     * @param loginRequest
-     * @return the access token in the Authorization header, and the user + refresh token in the body.
-     */
-    @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest loginRequest) {
-        ResponseEntity<LoginResponse> unauthorizedResponse = ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        try {
-            LoginResult loginResult = authService.login(loginRequest.getUsername(), loginRequest.getPassword());
-            if(loginResult == null || loginResult.getUser() == null){
-                return unauthorizedResponse;
+    @Operation(summary = "Issue a token", description = "grantType=password exchanges credentials; grantType=refresh_token rotates a refresh token")
+    @PostMapping("/oauth2/token")
+    public ResponseEntity<TokenResponse> token(@Valid @RequestBody TokenRequest tokenRequest)
+            throws UserException, UserNotExistsException, RefreshTokenException, JwtKeyStoreException {
+        LoginResult loginResult = switch (tokenRequest.getGrantType()) {
+            case GRANT_TYPE_PASSWORD -> {
+                if (!StringUtils.hasText(tokenRequest.getUsername()) || !StringUtils.hasText(tokenRequest.getPassword())) {
+                    throw new UserException("username and password are required for grantType=password");
+                }
+                yield authService.login(tokenRequest.getUsername(), tokenRequest.getPassword());
             }
-            if(loginResult.getAuthenticationHeader().isEmpty()){
-                return unauthorizedResponse;
+            case GRANT_TYPE_REFRESH_TOKEN -> {
+                if (!StringUtils.hasText(tokenRequest.getRefreshToken())) {
+                    throw new UserException("refreshToken is required for grantType=refresh_token");
+                }
+                yield authService.refresh(tokenRequest.getRefreshToken());
             }
-            LoginResponse loginResponse = new LoginResponse();
-            loginResponse.setUser(mapper.userEntityToDto(loginResult.getUser()));
-            loginResponse.setRefreshToken(loginResult.getRefreshToken());
-            return ResponseEntity.ok()
-                    .headers(loginResult.getAuthenticationHeader())
-                    .body(loginResponse);
+            default -> throw new UserException("Unsupported grantType: " + tokenRequest.getGrantType());
+        };
+
+        if (loginResult == null || loginResult.getUser() == null) {
+            throw new UserNotExistsException("Invalid username or password");
         }
-        catch (UserNotExistsException userNotExistsException){
-            log.warn("Login failed: {}", userNotExistsException.getMessage());
-            return unauthorizedResponse;
-        } catch (JwtKeyStoreException e) {
-            log.error("Login failed due to a JWT keystore error", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+
+        return ResponseEntity.ok(buildTokenResponse(loginResult));
     }
 
     /**
-     * Exchange a valid refresh token for a new access token (rotates the refresh token).
+     * Revokes the caller's access token (RFC 7009): blacklists it and revokes their refresh tokens.
      */
-    @PostMapping("/token/refresh")
-    public ResponseEntity<LoginResponse> refresh(@RequestBody RefreshTokenRequest refreshTokenRequest) {
-        try {
-            LoginResult loginResult = authService.refresh(refreshTokenRequest.getRefreshToken());
-            LoginResponse loginResponse = new LoginResponse();
-            loginResponse.setUser(mapper.userEntityToDto(loginResult.getUser()));
-            loginResponse.setRefreshToken(loginResult.getRefreshToken());
-            return ResponseEntity.ok()
-                    .headers(loginResult.getAuthenticationHeader())
-                    .body(loginResponse);
-        } catch (RefreshTokenException e) {
-            log.warn("Token refresh failed: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        } catch (JwtKeyStoreException e) {
-            log.error("Token refresh failed due to a JWT keystore error", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+    @Operation(summary = "Revoke the caller's token")
+    @SecurityRequirement(name = "bearerAuth")
+    @PostMapping("/oauth2/revoke")
+    public ResponseEntity<Void> revoke(@RequestHeader(value = "Authorization", required = false) String authHeader)
+            throws JwtKeyStoreException, JwtNotValidException {
+        authService.logout(extractCallerBearerToken(authHeader));
+        return ResponseEntity.noContent().build();
     }
 
     /**
-     * Logs out the caller: blacklists the current access token and revokes their refresh tokens.
+     * Introspects a token's claimed identity against the authenticated caller (RFC 7662).
      */
-    @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authHeader) {
-        String accessToken = authHeader.substring(7);
-        try {
-            authService.logout(accessToken);
-            return ResponseEntity.ok().build();
-        } catch (JwtKeyStoreException e) {
-            log.error("Logout failed due to a JWT keystore error", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        } catch (JwtNotValidException e) {
-            log.warn("Logout failed: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-    }
+    @Operation(summary = "Introspect a token's claimed identity against the authenticated caller")
+    @SecurityRequirement(name = "bearerAuth")
+    @PostMapping("/oauth2/introspect")
+    public ResponseEntity<IntrospectionResponse> introspect(@Valid @RequestBody UserDto userDto) {
+        UserDetails principal = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Set<RoleDto> requestedRoles = userDto.getRoles() != null ? userDto.getRoles() : Set.of();
 
-    @PostMapping("token/validate")
-    public ResponseEntity<Boolean> validateToken(@RequestBody UserDto userDto){
-        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if(!userDetails.getUsername().equals(userDto.getUsername())){
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(false);
-        }
-        AtomicBoolean containsAuthority = new AtomicBoolean(false);
-        userDetails.getAuthorities().forEach(authority -> userDto.getRoles().forEach(role -> {
-            if(authority.getAuthority().contains(role.getName())){
-                containsAuthority.set(true);
-            }
-        }));
-        if(containsAuthority.get()){
-            return ResponseEntity.ok(true);
-        }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(false);
-    }
+        boolean active = principal.getUsername().equals(userDto.getUsername())
+                && principal.getAuthorities().stream().anyMatch(authority ->
+                        requestedRoles.stream().anyMatch(role -> authority.getAuthority().equals(role.getName())));
 
-    @GetMapping("/token/claims")
-    public ResponseEntity<ClaimsResponse> getClaimsFromToken(){
-        GSKartUserDetails userDetails = (GSKartUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        User user = userDetails.getUserEntity();
-        ClaimsResponse response = mapper.userEntityToClaimsResponse(user);
+        IntrospectionResponse response = new IntrospectionResponse();
+        response.setActive(active);
+        response.setUsername(principal.getUsername());
         return ResponseEntity.ok(response);
     }
-    // TODO forget password (FR-U5, depends on notifications-service)
 
+    /**
+     * OIDC UserInfo — returns claims for the authenticated caller, consumed by resource servers.
+     */
+    @Operation(summary = "Return claims for the authenticated caller (OIDC UserInfo)")
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/userinfo")
+    public ResponseEntity<ClaimsResponse> userInfo() {
+        GSKartUserDetails userDetails = (GSKartUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        ClaimsResponse response = mapper.userEntityToClaimsResponse(userDetails.getUserEntity());
+        return ResponseEntity.ok(response);
+    }
+
+    private TokenResponse buildTokenResponse(LoginResult loginResult) {
+        // AuthService.buildLoginResult always sets a well-formed "Bearer <token>" header itself
+        // (not client-supplied input), so this substring is safe without re-validating the format.
+        String authHeader = loginResult.getAuthenticationHeader().getFirst(HttpHeaders.AUTHORIZATION);
+        TokenResponse response = new TokenResponse();
+        response.setAccessToken(authHeader.substring(7));
+        response.setTokenType("Bearer");
+        response.setExpiresIn(accessTokenExpiryMinutes * 60);
+        response.setRefreshToken(loginResult.getRefreshToken());
+        return response;
+    }
+
+    private String extractCallerBearerToken(String authHeader) throws JwtNotValidException {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new JwtNotValidException("Missing or malformed Authorization header", new IllegalArgumentException());
+        }
+        return authHeader.substring(7);
+    }
+
+    // TODO forget password (FR-U5, depends on notifications-service)
 }

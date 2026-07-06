@@ -1,10 +1,8 @@
 package com.gskart.user.services;
 
-import com.gskart.user.DTOs.requests.SignUpRequest;
 import com.gskart.user.DTOs.results.LoginResult;
 import com.gskart.user.entities.BlacklistedToken;
 import com.gskart.user.entities.RefreshToken;
-import com.gskart.user.entities.Role;
 import com.gskart.user.entities.User;
 import com.gskart.user.exceptions.*;
 import com.gskart.user.mappers.Mapper;
@@ -25,7 +23,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 public class AuthService implements IAuthService {
@@ -51,49 +48,12 @@ public class AuthService implements IAuthService {
         this.mapper = mapper;
     }
 
-    public User signup(SignUpRequest signUpRequest) throws UserException, UserAlreadyRegisteredException {
-        if(userRepository.existsByEmail(signUpRequest.getEmail())){
-            throw new UserAlreadyRegisteredException(String.format("User with email %s already registered.", signUpRequest.getEmail()));
-        }
-
-        if(userRepository.existsByUsername(signUpRequest.getUsername())){
-            throw new UserAlreadyRegisteredException(String.format("User with username %s already registered.", signUpRequest.getUsername()));
-        }
-
-        // validate for user role. User is expected to have at least one Role
-        if(signUpRequest.getRoles() == null || signUpRequest.getRoles().isEmpty()){
-            throw new UserException("No roles associated with the user. User must contain at least one role.");
-        }
-
-        User user = new User();
-        user.setEmail(signUpRequest.getEmail());
-        user.setLastname(signUpRequest.getLastname());
-        user.setFirstname(signUpRequest.getFirstname());
-        user.setUsername(signUpRequest.getUsername());
-        user.setPassword(bCryptPasswordEncoder.encode(signUpRequest.getPassword()));
-        user.setCreatedOn(OffsetDateTime.now(ZoneOffset.UTC));
-        user.setCreatedBy(signUpRequest.getUsername());
-        user.setUserStatus(User.UserStatus.ACTIVE);
-        user.setCredentialsStatus(User.CredentialsStatus.ACTIVE);
-        //user.setModifiedOn(OffsetDateTime.now(ZoneOffset.UTC));
-        // TODO created by and modified by should be set based on the User who sent the request
-
-        if(signUpRequest.getRoles()!=null) {
-            user.setRoles(signUpRequest.getRoles().stream().map(roleDto -> {
-                Role role = new Role();
-                role.setName(roleDto.getName());
-                role.setDescription(roleDto.getDescription());
-                return role;
-            }).collect(Collectors.toSet()));
-        }
-        User savedUser = userRepository.save(user);
-        return savedUser;
-    }
-
     public LoginResult login(String username, String password) throws UserNotExistsException, JwtKeyStoreException {
         Optional<User> optionalUser = userRepository.findByUsername(username);
         if(optionalUser.isEmpty()){
-            throw new UserNotExistsException(String.format("User with username %s does not exist", username));
+            // Same message as the bad-password case below — must not let a caller distinguish
+            // "unknown username" from "wrong password" (account-enumeration guard).
+            throw new UserNotExistsException("Invalid username or password");
         }
 
         User user = optionalUser.get();
