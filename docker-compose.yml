@@ -18,5 +18,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  auth-service:
+    build: .
+    container_name: gskart-auth-service
+    restart: unless-stopped
+    ports:
+      - "4011:4011"
+    environment:
+      MYSQL_HOST: mysql
+      GSKART_DB_USER: ${GSKART_DB_USER}
+      GSKART_DB_PASSWORD: ${GSKART_DB_PASSWORD}
+      GSKART_SECURITY_USER_PASSWORD: ${GSKART_SECURITY_USER_PASSWORD}
+      GSKART_JWT_KEYSTORE_PASSWORD: ${GSKART_JWT_KEYSTORE_PASSWORD}
+      GSKART_ADMIN_PASSWORD_HASH: ${GSKART_ADMIN_PASSWORD_HASH}
+      # Bare form (no ${...} default): only passed through if set on the host, so the app's own
+      # application.properties default (admin / admin@gskart.local) stays the single source of
+      # truth instead of a second copy of the default living here.
+      GSKART_ADMIN_USERNAME:
+      GSKART_ADMIN_EMAIL:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4011/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      mysql:
+        condition: service_healthy
 volumes:
   gskart-mysql-data:
