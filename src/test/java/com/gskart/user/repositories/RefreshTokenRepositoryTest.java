@@ -74,4 +74,19 @@ class RefreshTokenRepositoryTest {
 
         assertThat(updated).isEqualTo(0);
     }
+
+    @Test
+    void bulkDeleteExpiredBefore_removesOnlyExpiredTokens() {
+        RefreshToken expired = buildToken("expired-token", "jdoe", false);
+        expired.setExpiresOn(OffsetDateTime.now(ZoneOffset.UTC).minusDays(1));
+        refreshTokenRepository.save(expired);
+        refreshTokenRepository.save(buildToken("active-token", "jdoe", false));
+
+        int deleted = refreshTokenRepository.bulkDeleteExpiredBefore(OffsetDateTime.now(ZoneOffset.UTC));
+        entityManager.clear();
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(refreshTokenRepository.findByToken("expired-token")).isEmpty();
+        assertThat(refreshTokenRepository.findByToken("active-token")).isPresent();
+    }
 }
