@@ -17,7 +17,10 @@ public class GSKartUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        if(!user.getRoles().isEmpty()){
+        // Roles are null when this principal has been rehydrated from the authorization store,
+        // which persists the user without its role collection; the Authentication carries the
+        // granted authorities in that case.
+        if(user.getRoles() != null && !user.getRoles().isEmpty()){
             Collection<GSKartRole> gsKartRoleList;
             gsKartRoleList = user.getRoles().stream().map(GSKartRole::new).toList();
             return gsKartRoleList;

@@ -1,5 +1,3 @@
-use gskartUsers;
-
 -- Repoint any users_roles mappings from a duplicate-named role onto the lowest-id role sharing
 -- that name, then drop the now-redundant role rows, before enforcing uniqueness on roles.name.
 drop temporary table if exists tmp_role_canonical;

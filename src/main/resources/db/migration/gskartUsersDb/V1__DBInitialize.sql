@@ -1,5 +1,3 @@
-use gskartUsers;
-
 -- Drop FK_UserRoles_RoleId
 set @fkExists = (select 1 from information_schema.table_constraints where table_schema = DATABASE() and table_name = 'users_roles' and constraint_name = 'FK_UserRoles_RoleId' and constraint_type = 'FOREIGN KEY');
 set @DropFkQuery = if (@fkExists > 0, 'alter table users_roles drop foreign key FK_UserRoles_RoleId', 'select ''Foreign key does not exist''');

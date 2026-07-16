@@ -1,8 +1,6 @@
 package com.gskart.user.exceptionHandlers;
 
 import com.gskart.user.exceptions.JwtKeyStoreException;
-import com.gskart.user.exceptions.JwtNotValidException;
-import com.gskart.user.exceptions.RefreshTokenException;
 import com.gskart.user.exceptions.RoleAlreadyExistsException;
 import com.gskart.user.exceptions.RoleNotFoundException;
 import com.gskart.user.exceptions.UserAlreadyRegisteredException;
@@ -49,7 +47,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
-    @ExceptionHandler({UserNotExistsException.class, RefreshTokenException.class, JwtNotValidException.class})
+    @ExceptionHandler(UserNotExistsException.class)
     public ProblemDetail handleAuthenticationFailure(Exception exception) {
         log.warn("Authentication failed: {}", exception.getMessage());
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());

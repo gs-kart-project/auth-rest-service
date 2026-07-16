@@ -2,7 +2,6 @@ package com.gskart.user.mappers;
 
 import com.gskart.user.DTOs.RoleDto;
 import com.gskart.user.DTOs.requests.RoleRequest;
-import com.gskart.user.DTOs.response.ClaimsResponse;
 import com.gskart.user.DTOs.response.UserDetailsDto;
 import com.gskart.user.entities.Role;
 import com.gskart.user.entities.User;
@@ -27,13 +26,6 @@ public class Mapper {
         }).collect(Collectors.toSet());
     }
 
-    public ClaimsResponse userEntityToClaimsResponse(User user) {
-        ClaimsResponse claimsResponse = new ClaimsResponse();
-        claimsResponse.setUsername(user.getUsername());
-        claimsResponse.setEmail(user.getEmail());
-        claimsResponse.setRoles(rolesEntitySetToRolesDtoSet(user.getRoles()));
-        return claimsResponse;
-    }
 
     public UserDetailsDto userEntityToDetailsDto(User user) {
         UserDetailsDto dto = new UserDetailsDto();

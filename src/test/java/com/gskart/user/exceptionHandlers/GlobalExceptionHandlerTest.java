@@ -1,8 +1,6 @@
 package com.gskart.user.exceptionHandlers;
 
 import com.gskart.user.exceptions.JwtKeyStoreException;
-import com.gskart.user.exceptions.JwtNotValidException;
-import com.gskart.user.exceptions.RefreshTokenException;
 import com.gskart.user.exceptions.RoleAlreadyExistsException;
 import com.gskart.user.exceptions.RoleNotFoundException;
 import com.gskart.user.exceptions.UserAlreadyRegisteredException;
@@ -66,12 +64,8 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleAuthenticationFailure_returns401_forEachAuthExceptionType() {
+    void handleAuthenticationFailure_returns401() {
         assertThat(handler.handleAuthenticationFailure(new UserNotExistsException("x")).getStatus())
-                .isEqualTo(HttpStatus.UNAUTHORIZED.value());
-        assertThat(handler.handleAuthenticationFailure(new RefreshTokenException("x")).getStatus())
-                .isEqualTo(HttpStatus.UNAUTHORIZED.value());
-        assertThat(handler.handleAuthenticationFailure(new JwtNotValidException("x", new RuntimeException())).getStatus())
                 .isEqualTo(HttpStatus.UNAUTHORIZED.value());
     }
 

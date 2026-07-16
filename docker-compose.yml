@@ -28,7 +28,6 @@ services:
       MYSQL_HOST: mysql
       GSKART_DB_USER: ${GSKART_DB_USER}
       GSKART_DB_PASSWORD: ${GSKART_DB_PASSWORD}
-      GSKART_SECURITY_USER_PASSWORD: ${GSKART_SECURITY_USER_PASSWORD}
       GSKART_JWT_KEYSTORE_PASSWORD: ${GSKART_JWT_KEYSTORE_PASSWORD}
       GSKART_ADMIN_PASSWORD_HASH: ${GSKART_ADMIN_PASSWORD_HASH}
       # Bare form (no ${...} default): only passed through if set on the host, so the app's own
@@ -36,6 +35,9 @@ services:
       # truth instead of a second copy of the default living here.
       GSKART_ADMIN_USERNAME:
       GSKART_ADMIN_EMAIL:
+      # local/dev profile registers the password-grant test client (AuthorizationServerConfig).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      GSKART_TEST_CLIENT_SECRET: ${GSKART_TEST_CLIENT_SECRET}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4011/actuator/health"]
       interval: 10s

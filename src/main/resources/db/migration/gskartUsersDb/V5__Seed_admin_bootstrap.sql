@@ -1,5 +1,3 @@
-use gskartUsers;
-
 -- Bootstraps a Developer role and an initial admin user so the Developer-gated
 -- User/Role CRUD endpoints (UserController/RoleController) are reachable without
 -- manual DB surgery. Username/email/password-hash come from Flyway placeholders
