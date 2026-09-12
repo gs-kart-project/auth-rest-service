@@ -34,9 +34,6 @@ public class UserController {
         this.mapper = mapper;
     }
 
-    /**
-     * Sign up API - creates a new user resource (self-service, always granted the default role).
-     */
     @Operation(summary = "Register a new user (self-service, always granted the default role)")
     @PostMapping("/users")
     public ResponseEntity<UserDetailsDto> signUp(@Valid @RequestBody SignUpRequest signUpRequest)

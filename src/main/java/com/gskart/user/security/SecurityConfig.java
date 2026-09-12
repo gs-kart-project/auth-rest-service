@@ -88,7 +88,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** User/role CRUD and the docs/actuator surface — stateless, bearer tokens only. */
     @Bean
     @Order(2)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,

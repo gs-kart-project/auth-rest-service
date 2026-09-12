@@ -18,7 +18,6 @@ public class User extends BaseEntity{
     private String email;
     private String username;
     private String password;
-    //As user can have multiple roles
     @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private Set<Role> roles;
 

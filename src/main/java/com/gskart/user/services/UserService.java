@@ -48,8 +48,8 @@ public class UserService implements IUserService {
                     String.format("User with username %s already registered.", signUpRequest.getUsername()));
         }
 
-        // Self-registration never honors client-supplied roles (privilege-escalation guard, D14);
-        // every new user gets the default role and roles are managed via RoleController afterward.
+        // Self-registration never trusts client-supplied roles - that's a privilege-escalation guard.
+        // Every new user just gets the default role; roles get managed through RoleController afterward.
         Role defaultRole = findOrCreateDefaultRole();
 
         User user = new User();
