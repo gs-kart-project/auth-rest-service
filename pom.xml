@@ -102,7 +102,7 @@
 			<artifactId>flyway-mysql</artifactId>
 		</dependency>
 
-		<!-- API documentation (D13) -->
+		<!-- API documentation -->
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
